@@ -1,46 +1,51 @@
-//-----------------------------------------------------------
-//       FLOOD AND DRAIN PUMP TIMER WITH
-//           HEAT MAT THERMOSTAT AND
-//      MORSE CODE FLASH OF SENSOR VALUES
-//-----------------------------------------------------------
 // Pump Timer with Sensor Control and Morse Readout
 // Capacitive Soil Moisture Sensor with AOUT to pin 1
-// LED on Pin 13 will flash sensor values in morse code
-// M indicates moisture sensor value, H indicates thermistor value
-// Pump Relay is on Pin 4
-// Pump is activated once every 24 hours but will only run if soil moisture sensor indicates dry soil
 // Pump will turn off if soil becomes moist during pumping.
-// Change pumpCycleOnDuration to set pump run time
-// Change pumpCycleOffDuration to set delay between pump runs
-// Ground Pin 12 with a button switch to manually run pump once 
-// Thermistor is connected to 3.3V and Pin 0, with a 10k Ohm Resistor from Pin 0 to Ground
-// Heat relay is on Pin 5
-// Confirm DRYSOILSET, WETSOILSET, HEATSET values and pump cycle durations prior to use 
-// Paul VandenBosch, 20190119
+// Paul VandenBosch, 20190212
 
+// Thermistor to Green and White/Green
+
+#define HEATSET 350     // Sensor value to turn on heater
 #define DRYSOILSET 460  // Moisture sensor Value that triggers watering, soil is dry at this value
 #define WETSOILSET 400  // Moisture sensor Value that shuts off water pump
-#define RELAYPIN 4      // Pin used for pump relay
+#define AIRTEMPSET 350  // Sensor value to turn on fan
+
+#define WATERPUMPTIME 60     // Seconds to run water pump for each watering event
+#define FIRSTWATERING 5  // Day after start for the first watering event
+#define SECONDWATERING 7  // Day after start for the first watering event
+#define THIRDWATERING 15  // Day after start for the first watering event
+#define OVERFLOWDAYS 15   // Days after which the crop will be completed
+
+#define HEATRELAYPIN 4  // Pin used for heat relay  
+#define PUMPRELAYPIN 7      // Pin used for pump relay
+#define FANRELAYPIN 6  //  Pin used for fan relay
+
 #define MOISTUREPIN 1       // Analog pin used for moisture sensor
 #define BUTTONPIN 12    // Pin used to start manual pump by grounding it
-#define HEATSENSORPIN 0 // Pin used for heat sensor
-#define HEATSET 340     // Sensor value to turn on heater
-#define HEATRELAYPIN 5  // Pin used for heat relay  
+#define TRAYSENSORPIN 0 // Pin used for heat sensor on tray at seed level
+#define BOXSENSORPIN 2 // Pin used for heat sensor in box for air temperature
 
 int moistureSensor = analogRead(MOISTUREPIN);
-int heatSensor = analogRead(HEATSENSORPIN);
-int pumpToggle = 1;
-unsigned long pumpCycleStartTime = 0;
-unsigned long pumpCycleOnDuration = 50000;  // test value: 50 seconds: 50000
-unsigned long pumpCycleOffDuration = 86400000;  // test value: 24 hours: 86400000
-unsigned long pumpOffTime;
+int heatSensor = analogRead(TRAYSENSORPIN);
+int airTempSensor = analogRead(BOXSENSORPIN);
+
+unsigned long dayMs = 86400000;
+unsigned long hourMs = 3600000;
+unsigned long minuteMs = 60000;
+
+unsigned long waterPumpTime = WATERPUMPTIME * 1000.;
+unsigned long firstWatering = FIRSTWATERING * dayMs;
+unsigned long secondWatering = SECONDWATERING * dayMs; 
+unsigned long thirdWatering = THIRDWATERING *dayMs;
+
 unsigned long currentMillis;
+
 
 // Simple Arduino Morse Beacon
 // ****** Morse Beacon Begins ******
 
 #define N_MORSE  (sizeof(morsetab)/sizeof(morsetab[0]))
-#define SPEED  (12)
+#define SPEED  (15)
 #define DOTLEN  (1200/SPEED)
 #define DASHLEN  (4*(1200/SPEED))
 
@@ -149,14 +154,18 @@ sendmsg(char *str)
 }
 // ****** Morse Beacon Ends ******
 
+
+
 void setup() {
   Serial.begin(9600);
   pinMode(MOISTUREPIN, INPUT);
-  pinMode(RELAYPIN, OUTPUT);
+  pinMode(PUMPRELAYPIN, OUTPUT);
   pinMode(BUTTONPIN, INPUT_PULLUP);
-  pinMode(HEATSENSORPIN, INPUT);
+  pinMode(TRAYSENSORPIN, INPUT);
+  pinMode(BOXSENSORPIN, INPUT);
   pinMode(HEATRELAYPIN, OUTPUT);
-
+  pinMode(FANRELAYPIN, OUTPUT);
+  
   // ****** Morse Beacon Begins ******
   pinMode(morseLEDpin, OUTPUT) ;
   // ****** Morse Beacon Ends ******
@@ -164,8 +173,41 @@ void setup() {
 
 void loop() {
   moistureSensor = analogRead(MOISTUREPIN);
-  heatSensor = analogRead(HEATSENSORPIN);
+  heatSensor = analogRead(TRAYSENSORPIN);
+  airTempSensor = analogRead(BOXSENSORPIN);
+  
   currentMillis = millis();
+
+  if (currentMillis > firstWatering) {
+    digitalWrite(PUMPRELAYPIN, HIGH);
+  }
+  if (currentMillis > firstWatering + (WATERPUMPTIME * 1000.)) {
+    firstWatering = OVERFLOWDAYS * dayMs;
+    digitalWrite(PUMPRELAYPIN, LOW);
+  }
+
+  if (currentMillis > secondWatering) {
+    digitalWrite(PUMPRELAYPIN, HIGH);
+  }
+  if (currentMillis > secondWatering + (WATERPUMPTIME * 1000.)) {
+    secondWatering = OVERFLOWDAYS * dayMs;
+    digitalWrite(PUMPRELAYPIN, LOW);
+  }
+  
+  if (currentMillis > thirdWatering) {
+    digitalWrite(PUMPRELAYPIN, HIGH);
+  }
+  if (currentMillis > thirdWatering + (WATERPUMPTIME * 1000.)) {
+    thirdWatering = OVERFLOWDAYS * dayMs;
+    digitalWrite(PUMPRELAYPIN, LOW);
+  }
+
+  if (airTempSensor > AIRTEMPSET) {
+    digitalWrite(FANRELAYPIN, HIGH);
+  }
+  else {
+    digitalWrite(FANRELAYPIN, LOW);
+  }
 
   if (heatSensor < HEATSET) {
     digitalWrite(HEATRELAYPIN, HIGH);
@@ -176,75 +218,61 @@ void loop() {
 
   if (digitalRead(BUTTONPIN) == LOW) {
     digitalWrite(HEATRELAYPIN, LOW);
-    digitalWrite(RELAYPIN, HIGH);
+    digitalWrite(PUMPRELAYPIN, HIGH);
     Serial.println("");
     Serial.print("Manual Engagement of Pump by Button for ");
-    Serial.print(pumpCycleOnDuration / 1000);
+    Serial.print(WATERPUMPTIME);
     Serial.println(" Seconds Run Time");
-    delay(pumpCycleOnDuration);
-    digitalWrite(RELAYPIN, LOW);
+    delay(waterPumpTime);
+    digitalWrite(PUMPRELAYPIN, LOW);
   }
 
   if (moistureSensor < WETSOILSET) {     // turn off pump if soil is wet
-    digitalWrite(RELAYPIN, LOW);
+    digitalWrite(PUMPRELAYPIN, LOW);
   }
 
-  if (pumpCycleStartTime < currentMillis && moistureSensor > DRYSOILSET) {  // Pump will be authorized if past start time and moisture sensor shows dry soil
-    pumpOffTime = currentMillis + pumpCycleOnDuration;               // pumpOffTime sets the maximum time that pump can run
-    pumpToggle = 1;                                             // pumpToggle authorizes pump to start
-    pumpCycleStartTime = currentMillis + pumpCycleOnDuration + pumpCycleOffDuration;  // reset pump start time to next day
-  }
-
-  if (pumpToggle == 1) {                           // test if pump is toggled
-    if (pumpOffTime > currentMillis) {                  // check to see if pump on duration time has passed
-      if (moistureSensor > WETSOILSET) {                  // check to see if soil is wet
-        digitalWrite(HEATRELAYPIN, LOW);
-        digitalWrite(RELAYPIN, HIGH);                     // turn pump on
-      }
-    }
-    else {                                       // if past pump on duration time, turn pump off
-      pumpToggle = 0;                            // turn off pump toggle
-      digitalWrite(RELAYPIN, LOW);                      // turn off pump
-    }
-  }
-
-  if (pumpToggle == 1) {
-    Serial.println("");
-    Serial.print("Pump Time Remaining: ");
-    Serial.print((pumpOffTime - currentMillis) / 1000);
-    Serial.println(" Seconds");
-    Serial.println("");
-  }
-
-  if (pumpToggle == 0) {
-    Serial.print("Next Pump Cycle in: ");
-    Serial.print((pumpCycleStartTime - currentMillis) / 3600000);
-    Serial.println(" Hours");
 
     // ****** Morse Beacon Begins ******
+    //char message[] = "1234568"; // worked
     int morseI = 57; // set integer variable to be read out equal to morseI here
-    char message[21]; // enough to hold all numbers up to 64-bits
-    itoa(moistureSensor, message, 10);
+    char moistureMessage[21]; // enough to hold all numbers up to 64-bits
+    char heat0Message[21]; // enough to hold all numbers up to 64-bits
+    char airTempMessage[21]; // enough to hold all numbers up to 64-bits
+    itoa(moistureSensor, moistureMessage, 10);
+    itoa(heatSensor, heat0Message, 10);
+    itoa(airTempSensor, airTempMessage, 10);
     Serial.println("Sending Morse");
 
     sendmsg("M ");
-    sendmsg(message) ;
+    sendmsg(moistureMessage) ;
     delay(1000);
     sendmsg("H ");
-    sendmsg(heatSensor);
-
+    sendmsg(heat0Message);
+    sendmsg("A ");
+    sendmsg(airTempMessage);
     Serial.println("");
-    delay(2000) ;
+    //sendmsg("K6HX/B CM87") ;// original
+    delay(1000) ;
     // ****** Morse Beacon Ends ******
 
-  }
+
+  
   Serial.println("*******************************");
-  Serial.print("Minutes since restart: ");
-  Serial.println(currentMillis / 60000);
+  Serial.println("Arduino Growth Chamber Controller");
   Serial.print("Days since restart: ");
   Serial.println(currentMillis / 86400000);
+  Serial.print("Days to First Watering: ");
+  Serial.println((firstWatering - currentMillis) / dayMs);
+  Serial.print("Hours to First Watering: ");
+  Serial.println((firstWatering - currentMillis) / hourMs);
+  Serial.print("Days to Second Watering: ");
+  Serial.println((secondWatering - currentMillis) / dayMs);
+  Serial.print("Hours to Second Watering: ");
+  Serial.println((secondWatering - currentMillis) / hourMs);
   Serial.print("Moisture Sensor: ");
   Serial.println(moistureSensor);
   Serial.print("Heat Sensor: ");
   Serial.println(heatSensor);
+  Serial.print("Air Temp Sensor: ");
+  Serial.println(airTempSensor);
 }
