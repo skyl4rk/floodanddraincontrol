@@ -2,12 +2,21 @@ Arduino Controller for Flood and Drain System
 
 This system automates watering of a flood and drain growing system.
 
+This code is under development and will likely change soon.
+Some features not yet tested!
+
 Features include:
 
+Pump can be started up to three times per crop
 Pump controlled by capacitive moisture sensor with a timeout limit
 Heat Mat Thermostat Control with a thermistor
 Button switch to manually run pump one time
+Exhaust fan controled by box air temperature
+Air circulation fan runs when exhaust fan is off
 Thermistor and moisture sensor values are flashed in morse code
+Morse turned off to speed up cycle
+
+
 
 //-----------------------------------------------------------
 
@@ -25,27 +34,28 @@ Thermistor and moisture sensor values are flashed in morse code
 
 // LED on Pin 13 will flash sensor values in morse code
 
-// M indicates moisture sensor value, H indicates thermistor value
+// M indicates moisture sensor value, H indicates tray thermistor value, A indicates box air thermistor value
 
 // Pump Relay is on Pin 4
+// Circulation fan relay is Pin 5
+// Exhaust fan relay is Pin 6
+// Heat relay is Pin 7
 
-// Pump is activated once every 24 hours but will only run if soil moisture sensor indicates dry soil
+// Pump will only run if soil moisture sensor indicates dry soil
 
 // Pump will turn off if soil becomes moist during pumping.
 
 // Change pumpCycleOnDuration to set pump run time
 
-// Change pumpCycleOffDuration to set delay between pump runs
-
 // Ground Pin 12 with a button switch to manually run pump once 
 
-// Thermistor is connected to 3.3V and Pin 0, with a 10k Ohm Resistor from Pin 0 to Ground
+// Tray thermistor is connected to 3.3V and Pin 0, with a 10k Ohm Resistor from Pin 0 to Ground
 
-// Heat relay is on Pin 5
+// Box air thermistor is connected to 3.3V and Pin 2, with a 10k Ohm Resistor from Pin 0 to Ground
 
 // Confirm DRYSOILSET, WETSOILSET, HEATSET values and pump cycle durations prior to use 
 
-// Paul VandenBosch, 20190119
+// Paul VandenBosch, 20190220
 
 Suggested Product List (January, 2019):
 
@@ -58,3 +68,5 @@ Capacitive Soil Moisture Sensor: https://www.aliexpress.com/item/Capacitive-Soil
 Note: Capacitive Soil Moisture Sensor must be coated with varnish, epoxy or similar waterproof coating.
 
 Thermistor on 2m cable: https://www.aliexpress.com/item/2m-200cm-Two-2-Meter-Waterproof-NTC-Thermistor-Accuracy-Temperature-Sensor-10K-1-3950-Wire-Cable/32904302533.html
+
+

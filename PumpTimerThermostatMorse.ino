@@ -1,33 +1,36 @@
 // Pump Timer with Sensor Control and Morse Readout
 // Capacitive Soil Moisture Sensor with AOUT to pin 1
 // Pump will turn off if soil becomes moist during pumping.
-// Paul VandenBosch, 20190212
+// Exhaust fan thermostat based on tray temp sensor
+// Circulation fan runs when exhaust fan is off
+// Heat mats thermostat based on air temp sensor
+// Paul VandenBosch, 20190220
 
-// Thermistor to Green and White/Green
-
-#define HEATSET 350     // Sensor value to turn on heater
+#define HEATSET 325     // Sensor value to turn on heater below this temperature setting
+#define AIRTEMPSET 300  // Sensor value to turn on fan above this temperature setting
 #define DRYSOILSET 460  // Moisture sensor Value that triggers watering, soil is dry at this value
 #define WETSOILSET 400  // Moisture sensor Value that shuts off water pump
-#define AIRTEMPSET 350  // Sensor value to turn on fan
 
-#define WATERPUMPTIME 60     // Seconds to run water pump for each watering event
-#define FIRSTWATERING 5  // Day after start for the first watering event
-#define SECONDWATERING 7  // Day after start for the first watering event
-#define THIRDWATERING 15  // Day after start for the first watering event
-#define OVERFLOWDAYS 15   // Days after which the crop will be completed
+#define WATERPUMPTIME 60   // Seconds to run water pump for each watering event
+#define FIRSTWATERING 5    // Day after start for the first watering event
+#define SECONDWATERING 40  // Day after start for the first watering event
+#define THIRDWATERING 40   // Day after start for the first watering event
+#define OVERFLOWDAYS 40    // Days after which the crop will be completed
 
 #define HEATRELAYPIN 4  // Pin used for heat relay  
-#define PUMPRELAYPIN 7      // Pin used for pump relay
-#define FANRELAYPIN 6  //  Pin used for fan relay
+#define CIRCRELAYPIN 5  // Pin used for circulation fan relay
+#define FANRELAYPIN 6   //  Pin used for fan relay
+#define PUMPRELAYPIN 7  // Pin used for pump relay
 
-#define MOISTUREPIN 1       // Analog pin used for moisture sensor
-#define BUTTONPIN 12    // Pin used to start manual pump by grounding it
 #define TRAYSENSORPIN 0 // Pin used for heat sensor on tray at seed level
-#define BOXSENSORPIN 2 // Pin used for heat sensor in box for air temperature
+#define BOXSENSORPIN 2  // Pin used for heat sensor in box for air temperature
+#define MOISTUREPIN 1   // Analog pin used for moisture sensor
+#define BUTTONPIN 12    // Pin used to start manual pump by grounding it
 
 int moistureSensor = analogRead(MOISTUREPIN);
 int heatSensor = analogRead(TRAYSENSORPIN);
 int airTempSensor = analogRead(BOXSENSORPIN);
+int fan1Toggle = 0;
 
 unsigned long dayMs = 86400000;
 unsigned long hourMs = 3600000;
@@ -45,7 +48,7 @@ unsigned long currentMillis;
 // ****** Morse Beacon Begins ******
 
 #define N_MORSE  (sizeof(morsetab)/sizeof(morsetab[0]))
-#define SPEED  (15)
+#define SPEED  (12)
 #define DOTLEN  (1200/SPEED)
 #define DASHLEN  (4*(1200/SPEED))
 
@@ -158,13 +161,15 @@ sendmsg(char *str)
 
 void setup() {
   Serial.begin(9600);
-  pinMode(MOISTUREPIN, INPUT);
-  pinMode(PUMPRELAYPIN, OUTPUT);
+  
   pinMode(BUTTONPIN, INPUT_PULLUP);
+  pinMode(MOISTUREPIN, INPUT);
   pinMode(TRAYSENSORPIN, INPUT);
   pinMode(BOXSENSORPIN, INPUT);
+  pinMode(PUMPRELAYPIN, OUTPUT);
   pinMode(HEATRELAYPIN, OUTPUT);
   pinMode(FANRELAYPIN, OUTPUT);
+  pinMode(CIRCRELAYPIN, OUTPUT);
   
   // ****** Morse Beacon Begins ******
   pinMode(morseLEDpin, OUTPUT) ;
@@ -177,6 +182,8 @@ void loop() {
   airTempSensor = analogRead(BOXSENSORPIN);
   
   currentMillis = millis();
+
+// PUMP ACTUATION
 
   if (currentMillis > firstWatering) {
     digitalWrite(PUMPRELAYPIN, HIGH);
@@ -201,20 +208,47 @@ void loop() {
     thirdWatering = OVERFLOWDAYS * dayMs;
     digitalWrite(PUMPRELAYPIN, LOW);
   }
+  
+// FAN CONTROL
 
   if (airTempSensor > AIRTEMPSET) {
+    fan1Toggle = 1;
+    Serial.println("EXHAUST FAN ON");
+  }
+  else {
+    fan1Toggle = 0;
+    Serial.println("EXHAUST FAN OFF");
+  }
+
+  if (fan1Toggle == 1){
     digitalWrite(FANRELAYPIN, HIGH);
   }
   else {
     digitalWrite(FANRELAYPIN, LOW);
   }
 
+// CIRCULATION FAN CONTROL
+  if (digitalRead(FANRELAYPIN)) {
+  digitalWrite(CIRCRELAYPIN, LOW);
+  Serial.println("CIRCULATION FAN OFF");
+  }
+  else {
+  digitalWrite(CIRCRELAYPIN, HIGH);
+  Serial.println("CIRCULATION FAN ON");
+  }
+
+// HEAT MAT CONTROL
+
   if (heatSensor < HEATSET) {
     digitalWrite(HEATRELAYPIN, HIGH);
+    Serial.println("HEAT MATS ON");
   }
   else {
     digitalWrite(HEATRELAYPIN, LOW);
+    Serial.println("HEAT MATS OFF");
   }
+
+// BUTTON SENSOR
 
   if (digitalRead(BUTTONPIN) == LOW) {
     digitalWrite(HEATRELAYPIN, LOW);
@@ -226,6 +260,8 @@ void loop() {
     delay(waterPumpTime);
     digitalWrite(PUMPRELAYPIN, LOW);
   }
+
+// MOISTURE SENSOR PUMP LOCKOUT
 
   if (moistureSensor < WETSOILSET) {     // turn off pump if soil is wet
     digitalWrite(PUMPRELAYPIN, LOW);
@@ -242,12 +278,12 @@ void loop() {
     itoa(heatSensor, heat0Message, 10);
     itoa(airTempSensor, airTempMessage, 10);
     Serial.println("Sending Morse");
-
     sendmsg("M ");
     sendmsg(moistureMessage) ;
     delay(1000);
     sendmsg("H ");
     sendmsg(heat0Message);
+    delay(1000);
     sendmsg("A ");
     sendmsg(airTempMessage);
     Serial.println("");
@@ -261,6 +297,7 @@ void loop() {
   Serial.println("Arduino Growth Chamber Controller");
   Serial.print("Days since restart: ");
   Serial.println(currentMillis / 86400000);
+  /*  
   Serial.print("Days to First Watering: ");
   Serial.println((firstWatering - currentMillis) / dayMs);
   Serial.print("Hours to First Watering: ");
@@ -273,6 +310,18 @@ void loop() {
   Serial.println(moistureSensor);
   Serial.print("Heat Sensor: ");
   Serial.println(heatSensor);
+  Serial.print("HEAT SET TEMP: ");
+  Serial.println(HEATSET);
   Serial.print("Air Temp Sensor: ");
   Serial.println(airTempSensor);
+  Serial.print("AIR SET TEMP: ");
+  Serial.println(AIRTEMPSET);
+   */
+  Serial.println("   *   *   *   *   *   ");
+  Serial.print("Tray Temperature in F: ");
+  int heatF = heatSensor/4.34;
+  Serial.println(heatF);
+  Serial.print("Box Temperature in F: ");
+  int airF = airTempSensor / 4.25;
+  Serial.println(airF);
 }
